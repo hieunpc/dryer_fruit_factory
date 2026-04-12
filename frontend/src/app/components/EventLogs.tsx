@@ -56,6 +56,7 @@ export function EventLogs() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | LogLevel>("all");
   const [logs, setLogs] = useState(initialLogs);
+  const manualControlMachines = new Set(["M03", "M04", "M08", "M10"]);
 
   const filtered = filter === "all" ? logs : logs.filter((l) => l.level === filter);
 
@@ -69,6 +70,23 @@ export function EventLogs() {
     const random = entries[Math.floor(Math.random() * entries.length)];
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const machineCode = random.device.split("-")[0];
+    const isManualControl = manualControlMachines.has(machineCode);
+
+    if (random.level === "warning" || random.level === "critical") {
+      window.dispatchEvent(
+        new CustomEvent("threshold-alert", {
+          detail: {
+            level: random.level,
+            device: random.device,
+            status: random.status,
+            time: timeStr,
+            isManualControl,
+          },
+        })
+      );
+    }
+
     setLogs((prev) => [
       { id: prev.length + 1, time: timeStr, ...random },
       ...prev.slice(0, 9),

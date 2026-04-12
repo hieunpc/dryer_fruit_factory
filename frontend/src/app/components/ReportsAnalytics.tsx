@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -65,6 +65,20 @@ interface ActivityLog {
   user: string;
   details: string;
 }
+
+interface ManualAlertReportEntry {
+  id: string;
+  notificationId: string;
+  title: string;
+  message: string;
+  time: string;
+  status: "resolved" | "pending";
+  note: string;
+  createdAt: string;
+  updatedBy: string;
+}
+
+const MANUAL_ALERT_REPORTS_KEY = "manual-alert-reports";
 
 const allLogs: ActivityLog[] = [
   { id: 1, datetime: "Mar 12, 2026 10:05 AM", zoneMachine: "Zone A / Dryer M02", eventType: "critical", category: "sensor", user: "System", details: "Temperature exceeded critical threshold: 77°C" },
@@ -173,6 +187,40 @@ export function ReportsAnalytics() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [exportDone, setExportDone] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDataset, setExportDataset] = useState<"environment" | "logs" | null>(null);
+  const [exportFormat, setExportFormat] = useState<"csv" | "excel" | null>(null);
+  const [manualReports, setManualReports] = useState<ManualAlertReportEntry[]>([]);
+
+  useEffect(() => {
+    const loadManualReports = () => {
+      const raw = localStorage.getItem(MANUAL_ALERT_REPORTS_KEY);
+      if (!raw) {
+        setManualReports([]);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw) as ManualAlertReportEntry[];
+        if (Array.isArray(parsed)) {
+          setManualReports(parsed);
+        } else {
+          setManualReports([]);
+        }
+      } catch {
+        setManualReports([]);
+      }
+    };
+
+    loadManualReports();
+    window.addEventListener("manual-alert-report-updated", loadManualReports);
+    window.addEventListener("storage", loadManualReports);
+
+    return () => {
+      window.removeEventListener("manual-alert-report-updated", loadManualReports);
+      window.removeEventListener("storage", loadManualReports);
+    };
+  }, []);
 
   const days = dateRange === "7d" ? 7 : dateRange === "14d" ? 14 : dateRange === "60d" ? 60 : 30;
   const chartData = useMemo(() => generateDailyData(days), [days]);
@@ -185,9 +233,37 @@ export function ReportsAnalytics() {
   const avgHumid = (chartData.reduce((s, d) => s + d.humidity, 0) / chartData.length).toFixed(1);
   const avgLight = Math.round(chartData.reduce((s, d) => s + d.light, 0) / chartData.length);
 
+  const reportLogs = useMemo<ActivityLog[]>(() => {
+    return manualReports.map((entry, index) => {
+      const createdAt = new Date(entry.createdAt);
+      const fallbackDate = "Mar 12, 2026 10:00 AM";
+      const datetime = Number.isNaN(createdAt.getTime())
+        ? fallbackDate
+        : createdAt.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+      return {
+        id: 1000 + index,
+        datetime,
+        zoneMachine: entry.message.split(":")[0] || "Manual Alert",
+        eventType: entry.status === "resolved" ? "action" : "warning",
+        category: "machine",
+        user: entry.updatedBy || "Operator",
+        details: `[Manual Alert] ${entry.title} | Status: ${entry.status === "resolved" ? "Handled" : "Pending"} | Note: ${entry.note}`,
+      };
+    });
+  }, [manualReports]);
+
+  const combinedLogs = useMemo(() => [...reportLogs, ...allLogs], [reportLogs]);
+
   // Filtered logs
   const filteredLogs = useMemo(() => {
-    return allLogs.filter((l) => {
+    return combinedLogs.filter((l) => {
       const typeMatch = eventFilter === "all" || l.eventType === eventFilter;
       const categoryMatch = categoryFilter === "all" || l.category === categoryFilter;
       const zoneMatch = zoneMachine === "all" || l.zoneMachine.toLowerCase().includes(zoneMachine.replace("-", " "));
@@ -197,12 +273,108 @@ export function ReportsAnalytics() {
         l.user.toLowerCase().includes(searchQuery.toLowerCase());
       return typeMatch && categoryMatch && zoneMatch && searchMatch;
     });
-  }, [eventFilter, categoryFilter, zoneMachine, searchQuery]);
+  }, [combinedLogs, eventFilter, categoryFilter, zoneMachine, searchQuery]);
 
   const totalPages = Math.ceil(filteredLogs.length / LOGS_PER_PAGE);
   const paginatedLogs = filteredLogs.slice((currentPage - 1) * LOGS_PER_PAGE, currentPage * LOGS_PER_PAGE);
 
-  const handleExport = () => {
+  const handleOpenExportModal = () => {
+    setShowExportModal(true);
+    setExportDataset(null);
+    setExportFormat(null);
+  };
+
+  const handleCloseExportModal = () => {
+    setShowExportModal(false);
+  };
+
+  const escapeCsvValue = (value: string | number) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const toCsv = (rows: Array<Record<string, string | number>>) => {
+    if (rows.length === 0) {
+      return "";
+    }
+
+    const headers = Object.keys(rows[0]);
+    const headerLine = headers.map(escapeCsvValue).join(",");
+    const bodyLines = rows.map((row) => headers.map((header) => escapeCsvValue(row[header] ?? "")).join(","));
+    return [headerLine, ...bodyLines].join("\n");
+  };
+
+  const toExcelHtml = (rows: Array<Record<string, string | number>>) => {
+    if (rows.length === 0) {
+      return "<table><tr><td>No data</td></tr></table>";
+    }
+
+    const headers = Object.keys(rows[0]);
+    const head = headers.map((h) => `<th>${h}</th>`).join("");
+    const body = rows
+      .map((row) => `<tr>${headers.map((h) => `<td>${String(row[h] ?? "")}</td>`).join("")}</tr>`)
+      .join("");
+
+    return `
+      <html>
+        <head><meta charset="utf-8" /></head>
+        <body>
+          <table border="1" cellspacing="0" cellpadding="4">
+            <thead><tr>${head}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+  };
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleConfirmExport = () => {
+    if (!exportDataset || !exportFormat) {
+      return;
+    }
+
+    const exportRows: Array<Record<string, string | number>> = exportDataset === "environment"
+      ? chartData.map((item) => ({
+          day: item.day,
+          temperature_c: item.temperature,
+          humidity_percent: item.humidity,
+          light_percent: item.light,
+        }))
+      : filteredLogs.map((log) => ({
+          id: log.id,
+          datetime: log.datetime,
+          zone_machine: log.zoneMachine,
+          event_type: log.eventType,
+          category: log.category,
+          user: log.user,
+          details: log.details,
+        }));
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const baseName = exportDataset === "environment" ? "environment-data" : "system-logs";
+
+    if (exportFormat === "csv") {
+      const csv = toCsv(exportRows);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      downloadBlob(blob, `${baseName}-${dateStamp}.csv`);
+    } else {
+      const excelHtml = toExcelHtml(exportRows);
+      const blob = new Blob([excelHtml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+      downloadBlob(blob, `${baseName}-${dateStamp}.xls`);
+    }
+
+    setShowExportModal(false);
     setExportDone(true);
     setTimeout(() => setExportDone(false), 2500);
   };
@@ -273,7 +445,7 @@ export function ReportsAnalytics() {
             {/* Export Button */}
             <div className="ml-auto">
               <button
-                onClick={handleExport}
+                onClick={handleOpenExportModal}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
                   exportDone
                     ? "bg-emerald-50 border-emerald-200 text-emerald-700"
@@ -287,6 +459,111 @@ export function ReportsAnalytics() {
             </div>
           </div>
         </div>
+
+        {showExportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <h3 className="text-slate-800" style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                  Export Data
+                </h3>
+                <p className="text-slate-400" style={{ fontSize: "0.75rem" }}>
+                  Step 1: Choose data type, Step 2: Choose file format
+                </p>
+              </div>
+
+              <div className="space-y-5 px-5 py-4">
+                <div>
+                  <p className="mb-2 text-slate-700" style={{ fontSize: "0.78rem", fontWeight: 700 }}>
+                    1. Data Type
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setExportDataset("environment")}
+                      className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                        exportDataset === "environment"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
+                      }`}
+                    >
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700 }}>Environment</div>
+                      <div className="text-slate-400" style={{ fontSize: "0.7rem" }}>
+                        Temperature, humidity, light trends
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setExportDataset("logs")}
+                      className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                        exportDataset === "logs"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
+                      }`}
+                    >
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700 }}>Logs</div>
+                      <div className="text-slate-400" style={{ fontSize: "0.7rem" }}>
+                        Activity history and system events
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-slate-700" style={{ fontSize: "0.78rem", fontWeight: 700 }}>
+                    2. File Format
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setExportFormat("csv")}
+                      disabled={!exportDataset}
+                      className={`rounded-lg border px-3 py-2 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                        exportFormat === "csv"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
+                      }`}
+                    >
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700 }}>CSV</div>
+                      <div className="text-slate-400" style={{ fontSize: "0.7rem" }}>
+                        Comma-separated values
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setExportFormat("excel")}
+                      disabled={!exportDataset}
+                      className={`rounded-lg border px-3 py-2 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                        exportFormat === "excel"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
+                      }`}
+                    >
+                      <div style={{ fontSize: "0.8rem", fontWeight: 700 }}>Excel</div>
+                      <div className="text-slate-400" style={{ fontSize: "0.7rem" }}>
+                        Microsoft Excel (.xls)
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                <button
+                  onClick={handleCloseExportModal}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-50"
+                  style={{ fontSize: "0.78rem", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmExport}
+                  disabled={!exportDataset || !exportFormat}
+                  className="rounded-lg bg-emerald-500 px-3 py-2 text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  style={{ fontSize: "0.78rem", fontWeight: 700 }}
+                >
+                  Export & Download
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Pills */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

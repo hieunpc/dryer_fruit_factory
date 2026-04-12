@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Wind, Thermometer, Droplets, Timer, Hand, Gauge, CheckCircle2, Plus, Trash2, Target, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { fruitRecipes, type ControlMode, type FruitRecipe } from "../data/dryingRecipes";
 
 const kpiCards = [
 	{
@@ -51,23 +52,6 @@ const fruitTypes = [
 	{ id: "mandarin", name: "Mandarin" },
 ];
 
-type ControlMode = "manual" | "threshold" | "automations_recipe";
-
-interface DryingPhase {
-	id: string;
-	name: string;
-	temperature: number;
-	humidity: number;
-	duration: number;
-}
-
-interface DryingRecipe {
-	id: string;
-	name: string;
-	phases: DryingPhase[];
-	totalTime: number;
-}
-
 interface ThresholdRule {
 	id: string;
 	sensor: "temperature" | "humidity" | "light";
@@ -85,12 +69,21 @@ interface PolicyConfig {
 	thresholds: ThresholdRule[];
 }
 
+const thresholdActionOptions = [
+	{ value: "Turn on fan", label: "Turn on fan" },
+	{ value: "Turn off fan", label: "Turn off fan" },
+	{ value: "Turn on light", label: "Turn on light" },
+	{ value: "Turn off light", label: "Turn off light" },
+	{ value: "Open door", label: "Open door" },
+	{ value: "Close door", label: "Close door" },
+];
+
 const defaultPolicies: Record<string, PolicyConfig> = {
 	mango: {
 		fruitType: "mango",
 		controlMode: "threshold",
 		automationRules: ["safe-temp-limit", "humidity-balance"],
-		selectedRecipeId: "mango-standard",
+		selectedRecipeId: "mango",
 		thresholds: [
 			{ id: "t1", sensor: "temperature", condition: "above", value: 70, action: "Turn on exhaust fan", enabled: true },
 			{ id: "t2", sensor: "humidity", condition: "below", value: 35, action: "Reduce heater power", enabled: true },
@@ -100,57 +93,18 @@ const defaultPolicies: Record<string, PolicyConfig> = {
 		fruitType: "banana",
 		controlMode: "threshold",
 		automationRules: ["safe-temp-limit", "off-hour-energy-saver"],
-		selectedRecipeId: "banana-standard",
+		selectedRecipeId: "banana",
 		thresholds: [],
 	},
 	pineapple: {
 		fruitType: "pineapple",
 		controlMode: "threshold",
 		automationRules: ["safe-temp-limit"],
-		selectedRecipeId: "pineapple-standard",
+		selectedRecipeId: "pineapple",
 		thresholds: [
 			{ id: "t1", sensor: "temperature", condition: "above", value: 75, action: "Activate cooling", enabled: true },
 		],
 	},
-};
-
-const dryingRecipesByFruit: Record<string, DryingRecipe[]> = {
-	mango: [
-		{
-			id: "mango-standard",
-			name: "Mango Standard",
-			phases: [
-				{ id: "p1", name: "Pre-drying", temperature: 55, humidity: 60, duration: 2 },
-				{ id: "p2", name: "Main Drying", temperature: 65, humidity: 45, duration: 8 },
-				{ id: "p3", name: "Final Drying", temperature: 60, humidity: 30, duration: 4 },
-			],
-			totalTime: 14,
-		},
-	],
-	banana: [
-		{
-			id: "banana-standard",
-			name: "Banana Standard",
-			phases: [
-				{ id: "p1", name: "Initial Drying", temperature: 50, humidity: 55, duration: 3 },
-				{ id: "p2", name: "Core Drying", temperature: 60, humidity: 40, duration: 6 },
-				{ id: "p3", name: "Finishing", temperature: 55, humidity: 25, duration: 3 },
-			],
-			totalTime: 12,
-		},
-	],
-	pineapple: [
-		{
-			id: "pineapple-standard",
-			name: "Pineapple Standard",
-			phases: [
-				{ id: "p1", name: "Pre-drying", temperature: 60, humidity: 65, duration: 2 },
-				{ id: "p2", name: "Main Drying", temperature: 70, humidity: 50, duration: 10 },
-				{ id: "p3", name: "Final Drying", temperature: 65, humidity: 35, duration: 4 },
-			],
-			totalTime: 16,
-		},
-	],
 };
 
 const controlModeConfig: Record<ControlMode, { label: string; desc: string; icon: React.ReactNode }> = {
@@ -186,7 +140,7 @@ export function DryingManagement() {
 	const selectedMachine = machines.find((machine) => machine.id === selectedMachineId);
 	const selectedFruitData = fruitTypes.find((fruit) => fruit.id === selectedFruit);
 	const canSelectControlMode = Boolean(selectedMachine && selectedFruit);
-	const availableDryingRecipes = selectedFruit ? dryingRecipesByFruit[selectedFruit] || [] : [];
+	const availableDryingRecipes = selectedFruit ? fruitRecipes.filter((recipe: FruitRecipe) => recipe.id === selectedFruit) : [];
 	const selectedDryingRecipe = availableDryingRecipes.find((recipe) => recipe.id === policy.selectedRecipeId)
 		|| availableDryingRecipes[0];
 
@@ -203,7 +157,7 @@ export function DryingManagement() {
 	};
 
 	const handleFruitChange = (fruitId: string) => {
-		const firstRecipeId = dryingRecipesByFruit[fruitId]?.[0]?.id || "";
+		const firstRecipeId = fruitId;
 		setSelectedFruit(fruitId);
 		setPolicy(defaultPolicies[fruitId] || {
 			fruitType: fruitId,
@@ -384,47 +338,6 @@ export function DryingManagement() {
 
 								{policy.controlMode === "automations_recipe" && (
 									<div className="mt-4 space-y-2">
-										<div className="flex items-center justify-between gap-2">
-											<label className="text-slate-700 block" style={{ fontSize: "0.8125rem", fontWeight: 600 }}>
-												Automation Recipe
-											</label>
-											<button
-												onClick={handleGoToAutomationRules}
-												className="inline-flex items-center gap-1.5 px-3 py-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-												style={{ fontSize: "0.75rem", fontWeight: 600 }}
-											>
-												<Plus size={12} />
-												Change recipe details   
-											</button>
-										</div>
-										{availableDryingRecipes.length > 0 ? (
-											<>
-												<select
-													value={policy.selectedRecipeId || availableDryingRecipes[0].id}
-													onChange={(e) =>
-														setPolicy((prev) => ({
-															...prev,
-															selectedRecipeId: e.target.value,
-														}))
-													}
-													className="w-full md:w-96 px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none text-slate-700"
-													style={{ fontSize: "0.8125rem", fontWeight: 600 }}
-												>
-													{availableDryingRecipes.map((recipe) => (
-														<option key={recipe.id} value={recipe.id}>
-															{recipe.name}
-														</option>
-													))}
-												</select>
-												<p className="text-slate-500" style={{ fontSize: "0.72rem" }}>
-													Choose the drying recipe profile that the automation engine should run.
-												</p>
-											</>
-										) : (
-											<p className="text-slate-400" style={{ fontSize: "0.72rem" }}>
-												No automation recipes available for this fruit yet.
-											</p>
-										)}
 									</div>
 								)}
 
@@ -509,7 +422,7 @@ export function DryingManagement() {
 													{policy.thresholds.map((threshold) => (
 														<div
 															key={threshold.id}
-															className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+															className={`flex flex-col xl:flex-row xl:items-center gap-3 p-3 rounded-lg border transition-all ${
 																threshold.enabled
 																	? "border-slate-200 bg-white"
 																	: "border-slate-100 bg-slate-50 opacity-60"
@@ -531,7 +444,7 @@ export function DryingManagement() {
 															<select
 																value={threshold.sensor}
 																onChange={(e) => handleThresholdChange(threshold.id, "sensor", e.target.value)}
-																className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
+																className="w-full xl:w-auto px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
 																style={{ fontSize: "0.78rem", fontWeight: 600 }}
 															>
 																<option value="temperature">Temperature</option>
@@ -542,7 +455,7 @@ export function DryingManagement() {
 															<select
 																value={threshold.condition}
 																onChange={(e) => handleThresholdChange(threshold.id, "condition", e.target.value)}
-																className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
+																className="w-full xl:w-auto px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
 																style={{ fontSize: "0.78rem" }}
 															>
 																<option value="above">above</option>
@@ -553,20 +466,24 @@ export function DryingManagement() {
 																type="number"
 																value={threshold.value}
 																onChange={(e) => handleThresholdChange(threshold.id, "value", Number(e.target.value))}
-																className="w-16 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-right"
+																className="w-full xl:w-16 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-right"
 																style={{ fontSize: "0.78rem", fontWeight: 700 }}
 															/>
 
 															<ArrowRight size={14} className="text-slate-300 shrink-0" />
 
-															<input
-																type="text"
+															<select
 																value={threshold.action}
 																onChange={(e) => handleThresholdChange(threshold.id, "action", e.target.value)}
-																placeholder="Action..."
-																className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
+																className="w-full xl:flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700"
 																style={{ fontSize: "0.78rem" }}
-															/>
+															>
+																{thresholdActionOptions.map((option) => (
+																	<option key={option.value} value={option.value}>
+																		{option.label}
+																	</option>
+																))}
+															</select>
 
 															<button
 																onClick={() => handleDeleteThreshold(threshold.id)}

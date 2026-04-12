@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Layers, PencilLine } from "lucide-react";
+import { fruitRecipes } from "../data/dryingRecipes";
 
 interface BatchItem {
   id: string;
@@ -9,13 +10,14 @@ interface BatchItem {
   status: "active";
   activityType: "recipe" | "threshold" | "manual";
   mid: string;
+  currentPhaseIndex?: number;
 }
 
 const initialBatches: BatchItem[] = [
-  { id: "BATCH-046", machineId: "M04", machine: "Dryer A1", fruit: "Mango", status: "active", activityType: "recipe", mid: "M04-A" },
+  { id: "BATCH-046", machineId: "M04", machine: "Dryer A1", fruit: "Mango", status: "active", activityType: "recipe", mid: "M04-A", currentPhaseIndex: 1 },
   { id: "BATCH-047", machineId: "M04", machine: "Dryer A1", fruit: "Papaya", status: "active", activityType: "threshold", mid: "M04-B" },
   { id: "BATCH-048", machineId: "A2", machine: "Dryer A2", fruit: "Banana", status: "active", activityType: "manual", mid: "A2-A" },
-  { id: "BATCH-049", machineId: "A2", machine: "Dryer A2", fruit: "Guava", status: "active", activityType: "recipe", mid: "A2-B" },
+  { id: "BATCH-049", machineId: "A2", machine: "Dryer A2", fruit: "Guava", status: "active", activityType: "recipe", mid: "A2-B", currentPhaseIndex: 0 },
   { id: "BATCH-050", machineId: "B1", machine: "Dryer B1", fruit: "Pineapple", status: "active", activityType: "threshold", mid: "B1-A" },
   { id: "BATCH-051", machineId: "B1", machine: "Dryer B1", fruit: "Orange", status: "active", activityType: "manual", mid: "B1-B" },
 ];
@@ -39,6 +41,7 @@ const activityTypeStyles: Record<BatchItem["activityType"], string> = {
 export function BatchManagement() {
   const [batches, setBatches] = useState(initialBatches);
   const [savedBatchId, setSavedBatchId] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(initialBatches[0]?.id ?? null);
   const [machineFilter, setMachineFilter] = useState("all");
   const [activityFilter, setActivityFilter] = useState<"all" | BatchItem["activityType"]>("all");
 
@@ -56,6 +59,13 @@ export function BatchManagement() {
       }),
     [batches, machineFilter, activityFilter],
   );
+
+  const selectedBatch = batches.find((batch) => batch.id === selectedBatchId) ?? null;
+  const selectedRecipe = selectedBatch?.activityType === "recipe"
+    ? fruitRecipes.find((recipe) => recipe.id === selectedBatch.fruit.toLowerCase())
+    : null;
+  const selectedPhaseIndex = selectedBatch?.currentPhaseIndex ?? 0;
+  const currentPhase = selectedRecipe?.phases[selectedPhaseIndex] ?? null;
 
   const totalCount = batches.length;
   const editableCount = batches.length;
@@ -174,6 +184,42 @@ export function BatchManagement() {
         </div>
       </section>
 
+      {selectedBatch && (
+        <section className="rounded-xl bg-white border border-slate-200 shadow-sm p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-slate-800" style={{ fontSize: "0.9rem", fontWeight: 700 }}>
+                {selectedBatch.id} details
+              </p>
+              <p className="text-slate-500" style={{ fontSize: "0.75rem" }}>
+                {selectedBatch.machine} • {selectedBatch.fruit}
+              </p>
+            </div>
+            <span className={`px-2 py-1 rounded-full w-fit ${activityTypeStyles[selectedBatch.activityType]}`} style={{ fontSize: "0.7rem", fontWeight: 700 }}>
+              {activityTypeLabel[selectedBatch.activityType]}
+            </span>
+          </div>
+
+          {selectedBatch.activityType === "recipe" && selectedRecipe ? (
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+              <p className="text-cyan-700" style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em" }}>
+                CURRENT RECIPE STEP
+              </p>
+              <p className="text-cyan-900 mt-1" style={{ fontSize: "0.95rem", fontWeight: 800 }}>
+                Step {selectedPhaseIndex + 1}/{selectedRecipe.phases.length} - {currentPhase?.name ?? "Unknown"}
+              </p>
+              <p className="text-cyan-700 mt-1" style={{ fontSize: "0.75rem" }}>
+                Temp {currentPhase ? `${currentPhase.temperature}°C` : "—"} • Humidity {currentPhase ? `${currentPhase.humidity}%` : "—"} • Duration {currentPhase ? `${currentPhase.duration}h` : "—"}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-500" style={{ fontSize: "0.78rem" }}>
+              This batch is not running a recipe, so there is no recipe step to display.
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
           <p className="text-slate-700" style={{ fontSize: "0.85rem", fontWeight: 700 }}>
@@ -184,9 +230,16 @@ export function BatchManagement() {
         <div className="p-4 space-y-3">
           {filteredBatches.map((batch) => {
             const isSaved = savedBatchId === batch.id;
+            const isSelected = selectedBatchId === batch.id;
 
             return (
-              <div key={batch.id} className="rounded-lg border border-slate-200 p-3 bg-white">
+              <button
+                key={batch.id}
+                onClick={() => setSelectedBatchId(batch.id)}
+                className={`w-full rounded-lg border p-3 bg-white text-left transition-all ${
+                  isSelected ? "border-emerald-300 ring-2 ring-emerald-100" : "border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/30"
+                }`}
+              >
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div>
                     <p className="text-slate-800" style={{ fontSize: "0.85rem", fontWeight: 700 }}>{batch.id}</p>
@@ -210,7 +263,7 @@ export function BatchManagement() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
 

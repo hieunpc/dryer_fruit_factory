@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -6,6 +6,7 @@ import {
   MoreVertical,
   Thermometer,
   Droplets,
+  Sun,
   Edit2,
   Trash2,
   Cpu,
@@ -25,6 +26,7 @@ interface Machine {
   status: MachineStatus;
   temp: number;
   humidity: number;
+  light: number;
   mode: MachineMode;
   isOn: boolean;
   fruit: string;
@@ -33,21 +35,24 @@ interface Machine {
   dryingStage: string;
 }
 
+const clampPercent = (value: number | undefined) => Math.max(1, Math.min(100, value ?? 1));
+const randomPercent = () => Math.floor(Math.random() * 100) + 1;
+
 const initialZoneA: Machine[] = [
-  { id: "M01", name: "Dryer M01", zoneID: "a", status: "running", temp: 68, humidity: 42, mode: "auto", isOn: true, fruit: "Mango", runHours: 14, batchCode: "MG-240326-A", dryingStage: "Mid Drying" },
-  { id: "M02", name: "Dryer M02", zoneID: "a", status: "alert", temp: 77, humidity: 38, mode: "auto", isOn: true, fruit: "Banana", runHours: 9, batchCode: "BN-240326-B", dryingStage: "Final Drying" },
-  { id: "M03", name: "Dryer M03", zoneID: "a", status: "running", temp: 64, humidity: 45, mode: "manual", isOn: true, fruit: "Pineapple", runHours: 6, batchCode: "PN-240326-A", dryingStage: "Ramp-up" },
-  { id: "M04", name: "Dryer M04", zoneID: "a", status: "offline", temp: 24, humidity: 61, mode: "manual", isOn: false, fruit: "Papaya", runHours: 0, batchCode: "PP-240325-A", dryingStage: "Maintenance" }
+  { id: "M01", name: "Dryer M01", zoneID: "a", status: "running", temp: 68, humidity: 42, light: 74, mode: "auto", isOn: true, fruit: "Mango", runHours: 14, batchCode: "MG-240326-A", dryingStage: "Mid Drying" },
+  { id: "M02", name: "Dryer M02", zoneID: "a", status: "alert", temp: 77, humidity: 38, light: 88, mode: "auto", isOn: true, fruit: "Banana", runHours: 9, batchCode: "BN-240326-B", dryingStage: "Final Drying" },
+  { id: "M03", name: "Dryer M03", zoneID: "a", status: "running", temp: 64, humidity: 45, light: 63, mode: "manual", isOn: true, fruit: "Pineapple", runHours: 6, batchCode: "PN-240326-A", dryingStage: "Ramp-up" },
+  { id: "M04", name: "Dryer M04", zoneID: "a", status: "offline", temp: 24, humidity: 61, light: 18, mode: "manual", isOn: false, fruit: "Papaya", runHours: 0, batchCode: "PP-240325-A", dryingStage: "Maintenance" }
 
 ];
 
 const initialZoneB: Machine[] = [
-  { id: "M07", name: "Dryer M07", zoneID: "b", status: "running", temp: 65, humidity: 43, mode: "auto", isOn: true, fruit: "Orange", runHours: 8, batchCode: "OR-240326-A", dryingStage: "Pre-heating" },
-  { id: "M08", name: "Dryer M08", zoneID: "b", status: "running", temp: 67, humidity: 41, mode: "manual", isOn: true, fruit: "Lemon", runHours: 12, batchCode: "LM-240326-A", dryingStage: "Mid Drying" },
-  { id: "M09", name: "Dryer M09", zoneID: "b", status: "alert", temp: 78, humidity: 35, mode: "auto", isOn: true, fruit: "Grapefruit", runHours: 7, batchCode: "GF-240326-B", dryingStage: "Final Drying" },
-  { id: "M10", name: "Dryer M10", zoneID: "b", status: "offline", temp: 24, humidity: 63, mode: "manual", isOn: false, fruit: "Lime", runHours: 0, batchCode: "LI-240325-B", dryingStage: "Maintenance" },
-  { id: "M11", name: "Dryer M11", zoneID: "b", status: "running", temp: 69, humidity: 44, mode: "auto", isOn: true, fruit: "Orange", runHours: 5, batchCode: "OR-240326-C", dryingStage: "Ramp-up" },
-  { id: "M12", name: "Dryer M12", zoneID: "b", status: "running", temp: 66, humidity: 47, mode: "auto", isOn: true, fruit: "Mandarin", runHours: 10, batchCode: "MD-240326-A", dryingStage: "Conditioning" },
+  { id: "M07", name: "Dryer M07", zoneID: "b", status: "running", temp: 65, humidity: 43, light: 71, mode: "auto", isOn: true, fruit: "Orange", runHours: 8, batchCode: "OR-240326-A", dryingStage: "Pre-heating" },
+  { id: "M08", name: "Dryer M08", zoneID: "b", status: "running", temp: 67, humidity: 41, light: 66, mode: "manual", isOn: true, fruit: "Lemon", runHours: 12, batchCode: "LM-240326-A", dryingStage: "Mid Drying" },
+  { id: "M09", name: "Dryer M09", zoneID: "b", status: "alert", temp: 78, humidity: 35, light: 92, mode: "auto", isOn: true, fruit: "Grapefruit", runHours: 7, batchCode: "GF-240326-B", dryingStage: "Final Drying" },
+  { id: "M10", name: "Dryer M10", zoneID: "b", status: "offline", temp: 24, humidity: 63, light: 21, mode: "manual", isOn: false, fruit: "Lime", runHours: 0, batchCode: "LI-240325-B", dryingStage: "Maintenance" },
+  { id: "M11", name: "Dryer M11", zoneID: "b", status: "running", temp: 69, humidity: 44, light: 58, mode: "auto", isOn: true, fruit: "Orange", runHours: 5, batchCode: "OR-240326-C", dryingStage: "Ramp-up" },
+  { id: "M12", name: "Dryer M12", zoneID: "b", status: "running", temp: 66, humidity: 47, light: 69, mode: "auto", isOn: true, fruit: "Mandarin", runHours: 10, batchCode: "MD-240326-A", dryingStage: "Conditioning" },
 ];
 
 const statusConfig: Record<MachineStatus, { label: string; bg: string; text: string; dot: string; icon: React.ReactNode }> = {
@@ -103,6 +108,7 @@ function MachineCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const s = statusConfig[machine.status];
    const navigate = useNavigate();
+  const lightPercent = clampPercent(machine.light);
   return (
     <div
       className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition-all duration-200 overflow-visible relative ${
@@ -178,7 +184,7 @@ function MachineCard({
       </div>
 
       {/* Quick Stats */}
-      <div className="px-4 pb-3 grid grid-cols-2 gap-2">
+      <div className="px-4 pb-3 grid grid-cols-3 gap-2">
         <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-2.5 py-2 border border-orange-100">
           <Thermometer size={13} className="text-orange-500 shrink-0" />
           <div>
@@ -198,6 +204,17 @@ function MachineCard({
             </p>
             <p className="text-blue-700" style={{ fontWeight: 700, fontSize: "0.875rem" }}>
               {machine.isOn ? `${machine.humidity}%` : "—"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 bg-yellow-50 rounded-lg px-2.5 py-2 border border-yellow-100">
+          <Sun size={13} className="text-yellow-500 shrink-0" />
+          <div>
+            <p className="text-slate-400" style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.03em" }}>
+              LIGHT
+            </p>
+            <p className="text-yellow-700" style={{ fontWeight: 700, fontSize: "0.875rem" }}>
+              {machine.isOn ? `${lightPercent}%` : "—"}
             </p>
           </div>
         </div>
@@ -302,6 +319,38 @@ export function DevicesManagement() {
   const [zoneBMachines, setZoneBMachines] = useState(initialZoneB);
   const [zoneFilter, setZoneFilter] = useState("all");
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const [showAddDeviceDialog, setShowAddDeviceDialog] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [showDeviceForm, setShowDeviceForm] = useState(false);
+  const [deviceName, setDeviceName] = useState("");
+  const [deviceMode, setDeviceMode] = useState<MachineMode>("auto");
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setZoneAMachines((prev) =>
+        prev.map((machine) =>
+          machine.isOn
+            ? {
+                ...machine,
+                light: randomPercent(),
+              }
+            : machine
+        )
+      );
+      setZoneBMachines((prev) =>
+        prev.map((machine) =>
+          machine.isOn
+            ? {
+                ...machine,
+                light: randomPercent(),
+              }
+            : machine
+        )
+      );
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   const handleToggle = (id: string) => {
     setZoneAMachines((prev) =>
@@ -311,6 +360,7 @@ export function DevicesManagement() {
               ...m,
               isOn: !m.isOn,
               status: !m.isOn ? "running" : "offline",
+              light: !m.isOn ? randomPercent() : m.light,
             }
           : m
       )
@@ -322,6 +372,7 @@ export function DevicesManagement() {
               ...m,
               isOn: !m.isOn,
               status: !m.isOn ? "running" : "offline",
+              light: !m.isOn ? randomPercent() : m.light,
             }
           : m
       )
@@ -341,6 +392,62 @@ export function DevicesManagement() {
     }
 
     setSelectedMachine(machine);
+  };
+
+  const handleAddDevice = () => {
+    setShowAddDeviceDialog(true);
+    setSelectedRegion(null);
+  };
+
+  const handleRegionSelect = (region: string) => {
+    setSelectedRegion(region);
+    setShowAddDeviceDialog(false);
+    setShowDeviceForm(true);
+    setDeviceName("");
+    setDeviceMode("auto");
+  };
+
+  const handleSubmitDevice = () => {
+    if (!deviceName.trim() || !selectedRegion) {
+      return;
+    }
+
+    // Create new machine object
+    const newMachine: Machine = {
+      id: `M${Date.now()}`,
+      name: deviceName,
+      zoneID: selectedRegion,
+      status: "running",
+      temp: 0,
+      humidity: 0,
+      light: 50,
+      mode: deviceMode,
+      isOn: false,
+      fruit: "",
+      runHours: 0,
+      batchCode: "",
+      dryingStage: "Standby",
+    };
+
+    // Add machine to appropriate zone
+    if (selectedRegion === "a") {
+      setZoneAMachines((prev) => [...prev, newMachine]);
+    } else {
+      setZoneBMachines((prev) => [...prev, newMachine]);
+    }
+
+    // Reset form and close
+    setShowDeviceForm(false);
+    setDeviceName("");
+    setDeviceMode("auto");
+    setSelectedRegion(null);
+  };
+
+  const handleCancelForm = () => {
+    setShowDeviceForm(false);
+    setDeviceName("");
+    setDeviceMode("auto");
+    setSelectedRegion(null);
   };
 
   return (
@@ -373,7 +480,9 @@ export function DevicesManagement() {
               <ChevronDown size={14} className="absolute right-2.5 text-slate-400 pointer-events-none" />
             </div>
             {/* Add Machine Button */}
-            <button className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all duration-150">
+            <button 
+              onClick={handleAddDevice}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all duration-150">
               <Plus size={16} />
               <span style={{ fontSize: "0.8125rem", fontWeight: 600 }}>Add New Machine</span>
             </button>
@@ -453,9 +562,223 @@ export function DevicesManagement() {
                   </p>
                 </div>
 
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">
+                    <p className="text-orange-700" style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em" }}>
+                      TEMPERATURE
+                    </p>
+                    <p className="text-orange-900" style={{ fontSize: "1.05rem", fontWeight: 800 }}>
+                      {selectedMachine.isOn ? `${selectedMachine.temp}°C` : "—"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <p className="text-blue-700" style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em" }}>
+                      HUMIDITY
+                    </p>
+                    <p className="text-blue-900" style={{ fontSize: "1.05rem", fontWeight: 800 }}>
+                      {selectedMachine.isOn ? `${selectedMachine.humidity}%` : "—"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-yellow-100 bg-yellow-50 px-4 py-3">
+                    <p className="text-yellow-700" style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.04em" }}>
+                      LIGHT INTENSITY
+                    </p>
+                    <p className="text-yellow-900" style={{ fontSize: "1.05rem", fontWeight: 800 }}>
+                      {selectedMachine.isOn ? `${clampPercent(selectedMachine.light)}%` : "—"}
+                    </p>
+                  </div>
+                </div>
+
                 <p className="text-slate-500" style={{ fontSize: "0.75rem" }}>
                   Batch và giai đoạn được cập nhật theo ca vận hành gần nhất của máy.
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showAddDeviceDialog && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl">
+              <div className="px-5 py-4 border-b border-slate-100">
+                <p className="text-slate-800" style={{ fontWeight: 700, fontSize: "1.125rem" }}>
+                  Select Region
+                </p>
+                <p className="text-slate-400" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                  Choose which zone to add the new device
+                </p>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {/* Zone A Option */}
+                <button
+                  onClick={() => handleRegionSelect("a")}
+                  className="w-full p-4 border-2 border-slate-200 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 transition-all duration-150 text-left group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-slate-800 group-hover:text-emerald-700" style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Zone A — Tropical Fruits
+                      </p>
+                      <p className="text-slate-400 group-hover:text-slate-500" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                        High-temp drying line • {zoneAMachines.length} machines
+                      </p>
+                    </div>
+                    <div className="ml-3 w-5 h-5 rounded-full border-2 border-slate-300 group-hover:border-emerald-400 group-hover:bg-emerald-400 transition-all flex items-center justify-center">
+                      <div className="w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                </button>
+
+                {/* Zone B Option */}
+                <button
+                  onClick={() => handleRegionSelect("b")}
+                  className="w-full p-4 border-2 border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all duration-150 text-left group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-slate-800 group-hover:text-blue-700" style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Zone B — Citrus Fruits
+                      </p>
+                      <p className="text-slate-400 group-hover:text-slate-500" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                        Mid-temp drying line • {zoneBMachines.length} machines
+                      </p>
+                    </div>
+                    <div className="ml-3 w-5 h-5 rounded-full border-2 border-slate-300 group-hover:border-blue-400 group-hover:bg-blue-400 transition-all flex items-center justify-center">
+                      <div className="w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <div className="px-5 py-4 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setShowAddDeviceDialog(false)}
+                  className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition-all"
+                  style={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeviceForm && (
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl">
+              <div className="px-5 py-4 border-b border-slate-100">
+                <p className="text-slate-800" style={{ fontWeight: 700, fontSize: "1.125rem" }}>
+                  Add New Device
+                </p>
+                <p className="text-slate-400" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                  Zone {selectedRegion?.toUpperCase()} • Enter device details
+                </p>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Device Name Input */}
+                <div>
+                  <label className="block text-slate-700" style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    Device Name
+                  </label>
+                  <input
+                    type="text"
+                    value={deviceName}
+                    onChange={(e) => setDeviceName(e.target.value)}
+                    placeholder="e.g., Dryer M13"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                    style={{ fontSize: "0.8125rem" }}
+                  />
+                </div>
+
+                {/* Mode Selection */}
+                <div>
+                  <label className="block text-slate-700" style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+                    Operating Mode
+                  </label>
+                  <div className="space-y-2">
+                    {/* Auto Mode */}
+                    <button
+                      onClick={() => setDeviceMode("auto")}
+                      className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
+                        deviceMode === "auto"
+                          ? "border-emerald-400 bg-emerald-50"
+                          : "border-slate-200 bg-white hover:border-emerald-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className={`${deviceMode === "auto" ? "text-emerald-700" : "text-slate-700"}`} style={{ fontWeight: 600, fontSize: "0.875rem" }}>
+                            Automatic Mode
+                          </p>
+                          <p className={`${deviceMode === "auto" ? "text-emerald-600" : "text-slate-400"}`} style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                            AI-controlled drying process
+                          </p>
+                        </div>
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          deviceMode === "auto"
+                            ? "border-emerald-400 bg-emerald-400"
+                            : "border-slate-300"
+                        }`}>
+                          {deviceMode === "auto" && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Manual Mode */}
+                    <button
+                      onClick={() => setDeviceMode("manual")}
+                      className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
+                        deviceMode === "manual"
+                          ? "border-amber-400 bg-amber-50"
+                          : "border-slate-200 bg-white hover:border-amber-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className={`${deviceMode === "manual" ? "text-amber-700" : "text-slate-700"}`} style={{ fontWeight: 600, fontSize: "0.875rem" }}>
+                            Manual Mode
+                          </p>
+                          <p className={`${deviceMode === "manual" ? "text-amber-600" : "text-slate-400"}`} style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                            Operator-controlled drying process
+                          </p>
+                        </div>
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          deviceMode === "manual"
+                            ? "border-amber-400 bg-amber-400"
+                            : "border-slate-300"
+                        }`}>
+                          {deviceMode === "manual" && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  onClick={handleCancelForm}
+                  className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition-all"
+                  style={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitDevice}
+                  disabled={!deviceName.trim()}
+                  className={`px-4 py-2 text-white rounded-lg transition-all ${
+                    deviceName.trim()
+                      ? "bg-emerald-500 hover:bg-emerald-600"
+                      : "bg-slate-300 cursor-not-allowed"
+                  }`}
+                  style={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                >
+                  Add Device
+                </button>
               </div>
             </div>
           </div>
